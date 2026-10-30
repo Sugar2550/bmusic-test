@@ -1,0 +1,290 @@
+/* ===== テーマ変数 (OSのダークモード設定に自動追従) ===== */
+:root {
+  --bg: #f4f5f7;
+  --surface: #ffffff;
+  --surface-alt: #f8f9fb;
+  --text: #1c1e21;
+  --text-sub: #6b7280;
+  --border: #dfe2e8;
+  --accent: #1f6feb;
+  --accent-soft: #e6efff;
+  --accent-text: #ffffff;
+  --btn: #eceef2;
+  --btn-hover: #dcdfe6;
+  --shadow: 0 1px 3px rgba(0,0,0,.08);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16181c;
+    --surface: #1f2228;
+    --surface-alt: #252931;
+    --text: #eceef2;
+    --text-sub: #9aa3b2;
+    --border: #333844;
+    --accent: #5b9bff;
+    --accent-soft: #22324f;
+    --accent-text: #0d1117;
+    --btn: #2f343e;
+    --btn-hover: #3d4350;
+    --shadow: 0 1px 3px rgba(0,0,0,.5);
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 16px 16px 150px;
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", "Yu Gothic", sans-serif;
+  line-height: 1.5;
+  background: var(--bg);
+  color: var(--text);
+}
+h1 {
+  font-size: 24px;
+  text-align: center;
+  margin: 16px 0 20px;
+}
+
+/* ===== ボタン ===== */
+.simple-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  font: inherit;
+  font-size: 15px;
+  color: var(--text);
+  background: var(--btn);
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s;
+}
+.simple-btn:hover { background: var(--btn-hover); }
+.simple-btn:focus-visible,
+input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.simple-btn.primary { background: var(--accent); color: var(--accent-text); font-weight: 600; }
+.simple-btn.primary:hover { filter: brightness(1.08); }
+.simple-btn.danger { color: #d93025; }
+@media (prefers-color-scheme: dark) { .simple-btn.danger { color: #ff7b72; } }
+
+/* ===== 上部ナビ・検索 ===== */
+.top-nav {
+  max-width: 1000px;
+  margin: 0 auto;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.search-area {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  max-width: 1000px;
+  margin: 0 auto 12px;
+  padding: 10px 0;
+  background: var(--bg);
+}
+.search-box { max-width: 520px; margin: 0 auto; }
+input[type="text"],
+.search-box input[type="text"] {
+  display: block;
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 16px; /* iOSの自動ズーム防止 */
+  color: var(--text);
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  transition: border-color .15s;
+}
+input[type="text"]:focus { border-color: var(--accent); outline: none; }
+input::placeholder { color: var(--text-sub); }
+
+.loop-area {
+  max-width: 1000px;
+  margin: 0 auto 16px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.loop-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  font-size: 15px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  user-select: none;
+}
+.loop-label input { width: 18px; height: 18px; accent-color: var(--accent); }
+
+/* ===== 曲テーブル ===== */
+.table-scroll { max-width: 1000px; margin: 0 auto; }
+table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+th, td {
+  padding: 10px 12px;
+  text-align: center;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+}
+th {
+  position: sticky;
+  top: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-sub);
+  background: var(--surface-alt);
+}
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover td { background: var(--surface-alt); }
+tbody tr.playing td { background: var(--accent-soft); }
+td.song-title, th.song-title { text-align: left; }
+td.song-title { font-weight: 600; word-break: break-word; }
+td.col-ver { color: var(--text-sub); font-size: 13px; white-space: nowrap; }
+.empty-row { padding: 28px 12px; color: var(--text-sub); }
+
+/* ===== プレイリスト保存 ===== */
+.playlist-controls {
+  max-width: 600px;
+  margin: 20px auto;
+  display: flex;
+  gap: 8px;
+}
+.playlist-controls input[type="text"] { flex: 1; }
+.playlist-actions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+.saved-playlists {
+  max-width: 600px;
+  margin: 20px auto;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.saved-playlists h3 { margin: 0 0 12px; font-size: 16px; text-align: center; }
+.saved-playlist-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.saved-playlist-item:last-child { margin-bottom: 0; }
+.saved-playlist-name { flex: 1; min-width: 0; word-break: break-word; }
+.saved-playlist-name small { color: var(--text-sub); }
+.saved-playlist-actions { display: flex; gap: 6px; }
+.saved-playlist-actions .simple-btn { padding: 6px 12px; font-size: 14px; }
+
+/* ===== 下部プレイヤー ===== */
+.player-container {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 1000;
+  padding: 10px 0 calc(10px + env(safe-area-inset-bottom, 0px));
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -3px 15px rgba(0,0,0,.12);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.player-inner {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 0 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.now-playing {
+  width: 100%;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.seek-wrapper { width: 100%; display: flex; align-items: center; gap: 10px; }
+#seek-bar { flex: 1; height: 6px; cursor: pointer; accent-color: var(--accent); }
+.time-display {
+  min-width: 40px;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  text-align: center;
+  color: var(--text-sub);
+}
+.playback-controls { display: flex; justify-content: center; gap: 16px; }
+.playback-controls .simple-btn { padding: 8px 22px; font-size: 18px; }
+
+/* ===== スマホ: 表をカード表示に切り替え (縮小せず実寸で読める) ===== */
+@media (max-width: 700px) {
+  body { padding: 12px 12px 150px; }
+  h1 { font-size: 20px; margin: 12px 0 14px; }
+
+  table, tbody { display: block; }
+  table { background: transparent; border: none; box-shadow: none; border-radius: 0; }
+  thead { display: none; }
+
+  tr {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px;
+    margin-bottom: 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+  }
+  tr.playing { background: var(--accent-soft); border-color: var(--accent); }
+  td, tbody tr:hover td, tbody tr.playing td {
+    padding: 0;
+    border: none;
+    background: transparent;
+  }
+  td.song-title { order: 0; flex: 1 1 100%; font-size: 15px; }
+  td.col-ver { order: 1; flex: 1 1 100%; text-align: left; margin-top: -4px; }
+  td.col-ver:empty, td.col-ver.none { display: none; }
+  td.col-btn { order: 2; flex: 1 1 0; }
+  td.col-btn .simple-btn { width: 100%; padding: 10px 6px; font-size: 14px; }
+  td.empty-row { flex: 1 1 100%; text-align: center; padding: 24px 0; }
+
+  .playlist-controls { flex-direction: column; }
+  .saved-playlist-item { flex-direction: column; align-items: stretch; }
+  .saved-playlist-actions .simple-btn { flex: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}

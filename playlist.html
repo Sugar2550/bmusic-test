@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=yes">
+<title>BC Music Downloader</title>
+<link rel="stylesheet" href="common.css">
+<link rel="icon" type="image/x-icon" href="images/favicon.ico">
+</head>
+<body>
+<div class="top-nav">
+  <button class="simple-btn" onclick="location.href='index.html'">HOME</button>
+  <button class="simple-btn" onclick="location.href='mp3.html'">MP3</button>
+  <button class="simple-btn" onclick="location.href='ogg.html'">OGG</button>
+</div>
+<h1>プレイリスト</h1>
+<div class="loop-area">
+  <label class="loop-label">
+    <input type="checkbox" id="loopToggle"> プレイリストをループ再生
+  </label>
+</div>
+<div class="table-scroll">
+  <table id="playlist-table">
+    <thead>
+      <tr>
+        <th class="song-title">曲名</th>
+        <th>再生/停止</th>
+        <th>削除</th>
+      </tr>
+    </thead>
+    <tbody id="playlist-tbody"></tbody>
+  </table>
+</div>
+
+<div class="playlist-actions">
+  <button class="simple-btn danger" onclick="clearPlaylist()">全て削除</button>
+  <button class="simple-btn" onclick="sharePlaylist()">プレイリストを共有</button>
+</div>
+
+<div class="playlist-controls">
+  <input type="text" id="playlistNameInput" placeholder="プレイリスト名を入力...">
+  <button class="simple-btn" onclick="savePlaylistWithName()">保存</button>
+</div>
+
+<div id="savedPlaylistsContainer"></div>
+
+<div class="player-container">
+  <div class="player-inner">
+    <div class="now-playing" id="now-playing">再生中の曲：なし</div>
+    
+    <div class="seek-wrapper">
+      <span id="current-time" class="time-display">0:00</span>
+      <input type="range" id="seek-bar" value="0" max="100" step="1">
+      <span id="duration" class="time-display">0:00</span>
+    </div>
+
+    <div class="playback-controls">
+      <button id="prev-btn" class="simple-btn">⏮</button>
+      <button id="play-pause-btn" class="simple-btn">▶</button>
+      <button id="next-btn" class="simple-btn">⏭</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/playlist.js"></script>
+</body>
+</html>
