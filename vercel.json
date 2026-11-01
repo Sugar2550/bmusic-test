@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/music/:path*",
-      "destination": "https://raw.githubusercontent.com/Sugar2550/bmuisc-test/main/music/:path*"
+      "destination": "https://raw.githubusercontent.com/Sugar2550/bmusic-test/main/music/:path*"
     }
   ]
 }
