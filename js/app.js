@@ -27,16 +27,9 @@
   var PL_KEY = 'bcMusicPlaylist';
   var VOL_KEY = 'bcMusicVolume';
   var SAVED_KEY = 'bcMusicSavedPlaylists';
-  // 新しい音楽(にゃんこ村など)の曲リスト。songs_mp3.json と同じ、サイトのルートに置きます
-  var NYANKO_JSON = 'tracks.json';
-  // 音声ファイルの置き場所(vercel.json の /api/music/ → GitHub の music/ フォルダ)。
-  // tracks.json の file / dl を「nyanko/bgm/xxx.mp3」のように書くと、この場所からの相対パスになります
-  // (「/」や「http」で始まるパスはそのまま使います)
+  var TRACKS_JSON = 'tracks.json';
   var MUSIC_BASE = '/api/music/';
   var BC_FMTS = ['mp3', 'ogg'];
-  // tracks.json の file / dl の先頭を読み替えます(左: tracks.json での書き方 → 右: music/ 内の実際の場所)
-  var AUDIO_DIR_MAP = { 'audio/': 'nyankomura/' };
-  // 大戦争の分類名(tracks.json の bc の cat)の表示名と並び順
   var BC_CATS = {
     bgm: [
       ['regular', '恒常BGM'], ['limited', '限定BGM'], ['shometsu', '消滅都市コラボ'], ['pawapuro', 'パワプロコラボ'],
@@ -403,9 +396,6 @@
     }
     return entries;
   }
-  // 共有リンク: ?sd=12,5x2,100003,7x0
-  //   数字 = 曲番号(大戦争は songs_*.json の id、新しいフォルダの曲は 100000 以降)
-  //   xN   = ループ回数(省略すると1回、x0 は無限ループ)
   function shareUrl() {
     var ids = playlist.map(function (e) {
       return tracks[e.id].n + (e.loop !== 1 ? 'x' + e.loop : '');
@@ -414,9 +404,9 @@
   }
   function parseSd(str) {
     return String(str || '').split(',').map(function (tok) {
-      var m = /^(\d+)(?:x(\d+))?$/.exec(tok.trim());
+      var m = /^(\w+?)(?:x(\d+))?$/.exec(tok.trim());
       if (!m) return null;
-      var id = byNum[Number(m[1])];
+      var id = byNum[m[1]];
       if (!id || !tracks[id]) return null;
       var loop = m[2] === undefined ? 1 : Number(m[2]);
       return { id: id, loop: LOOP_STEPS.indexOf(loop) !== -1 ? loop : 1 };
@@ -1196,7 +1186,6 @@
 
   // ===== 名前を付けて保存するプレイリスト =====
   var fileMap = {};     // 曲ファイルのパス -> 曲ID (旧サイトの保存データの引き継ぎ用)
-  var legacyMap = {};   // 旧サイトの曲番号 -> 曲ID (旧共有リンク ?sd= 用)
 
   function entriesFromLegacy(tracksArr) {
     return (tracksArr || []).map(function (x) {
@@ -1280,35 +1269,44 @@
   }
   function dataOf(res) { return res && !res.__error ? res : null; }
 
-  // にゃんこ大戦争: 従来の songs_mp3.json / songs_ogg.json
-  var bcMeta = {};   // tracks.json の bc(曲名 → 長さ・種類・分類)
-  function addBc(list, fmt) {
+  // 曲ファイルのパス: 「/」「http」で始まるものはそのまま、それ以外は MUSIC_BASE からの相対パス
+  function resolveFile(p) {
+    return /^(\/|https?:)/.test(p) ? p : MUSIC_BASE + p;
+  }
+  // OGG の曲番号は、MP3 の番号に 1000 を足したもの (例: 5 → 1005、34_0 → 1034_0)
+  function oggNum(n) {
+    if (typeof n === 'number') return n + 1000;
+    return String(n).replace(/^\d+/, function (d) { return String(1000 + Number(d)); });
+  }
+
+  // にゃんこ大戦争: tracks.json の bc。1曲に mp3 / ogg のファイルを書くと、それぞれ別の曲として並びます
+  //   { "n": 0, "title": "…", "ver": "1.0", "kind": "bgm", "cat": "regular", "dur": 127.4,
+  //     "mp3": "mp3/000.mp3", "ogg": "ogg/000.ogg" }
+  function addBc(list) {
     (list || []).forEach(function (s) {
-      var m = bcMeta[s.title] || {};
-      var t = {
-        id: 'BC' + fmt + '_' + s.id, n: s.id, type: 'bc', fmt: fmt,
-        title: s.title, file: s.file, dl: s.dl, ver: s.version || s.ver || m.ver,
-        dur: s.dur || m.dur, cat: s.cat || m.cat, kind: s.kind || m.kind, loopStart: s.loopStart
-      };
-      tracks[t.id] = t;
-      bcList.push(t);
-      fileMap[t.file] = t.id;
-      legacyMap[s.id] = t.id;
+      BC_FMTS.forEach(function (fmt) {
+        if (!s[fmt]) return;
+        var n = fmt === 'ogg' ? (s.ogg_n !== undefined ? s.ogg_n : oggNum(s.n)) : s.n;
+        var t = {
+          id: 'BC' + fmt + '_' + n, n: n, type: 'bc', fmt: fmt,
+          title: s.title, file: resolveFile(s[fmt]), ver: s.ver,
+          dur: s.dur, cat: s.cat, kind: s.kind, loopStart: s.loopStart
+        };
+        tracks[t.id] = t;
+        bcList.push(t);
+        byNum[n] = t.id;
+        fileMap[t.file] = t.id;
+      });
     });
   }
 
-  // 新しい音楽の tracks.json: { bgm: [...], se: [...], other: [...] }
-  // 各曲の file / dl は MUSIC_BASE(/api/music/)からの相対パスで書きます
-  function addNyanko(data, base) {
+  // にゃんこ村など: tracks.json の bgm / se / other
+  function addNyanko(data) {
     var seq = 0;
-    function mapPath(p) {
-      for (var k in AUDIO_DIR_MAP) if (p.indexOf(k) === 0) return AUDIO_DIR_MAP[k] + p.slice(k.length);
-      return p;
-    }
     function prep(t, type) {
       t.type = type;
-      t.file = new URL(mapPath(t.file), base).href;
-      if (t.dl) t.dl = new URL(mapPath(t.dl), base).href;
+      t.file = resolveFile(t.file);
+      if (t.dl) t.dl = resolveFile(t.dl);
       // 共有URL用の番号。大戦争の番号(0〜)とぶつからないよう 100000 以降を使う
       var want = 100000 + (typeof t.n === 'number' ? t.n : seq);
       while (byNum[want]) want++;
@@ -1331,7 +1329,7 @@
     var packed = qs.get('p'), plain = qs.get('pl'), sd = qs.get('sd');
     if (packed !== null) return unpackEntries(packed);
     if (plain !== null) return decodeIds(plain);
-    if (sd !== null) return parseSd(sd);
+    if (sd !== null) return parseSd(sd);   // ?sd=曲番号,曲番号xループ回数,...
     return null;
   }
 
@@ -1340,18 +1338,11 @@
     if (btn && !btn.hidden) btn.click();
   }
 
-  Promise.all([
-    loadJson('songs_mp3.json'),
-    loadJson('songs_ogg.json'),
-    loadJson(NYANKO_JSON)
-  ]).then(function (res) {
-    var mp3 = dataOf(res[0]), ogg = dataOf(res[1]), ny = dataOf(res[2]);
-    if (!mp3 && !ogg && !ny) throw res[0].__error || new Error('データがありません');
-    ((ny && ny.bc) || []).forEach(function (m) { if (m.title) bcMeta[m.title] = m; });
-    addBc(mp3, 'mp3');
-    addBc(ogg, 'ogg');
-    bcList.forEach(function (t) { byNum[t.n] = t.id; });
-    if (ny) addNyanko(ny, new URL(MUSIC_BASE, location.origin));
+  loadJson(TRACKS_JSON).then(function (res) {
+    var data = dataOf(res);
+    if (!data) throw res.__error || new Error(TRACKS_JSON + ' がありません');
+    addBc(data.bc);
+    addNyanko(data);
     if (!bcList.some(function (t) { return t.fmt === 'mp3'; })) bcFmt = 'ogg';
 
     var firstRun = false;
