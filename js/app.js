@@ -27,9 +27,14 @@
   var PL_KEY = 'bcMusicPlaylist';
   var VOL_KEY = 'bcMusicVolume';
   var SAVED_KEY = 'bcMusicSavedPlaylists';
+  // 曲のデータはすべてこの1ファイル(サイトのルートに置く)にまとめています
   var TRACKS_JSON = 'tracks.json';
+  // 音声ファイルの置き場所(vercel.json の /api/music/ → GitHub の music/ フォルダ)。
+  // tracks.json の mp3 / ogg / file / dl は、ここからの相対パスで書きます(例: mp3/000.mp3)。
+  // 「/」や「http」で始まるパスは、そのまま使います
   var MUSIC_BASE = '/api/music/';
   var BC_FMTS = ['mp3', 'ogg'];
+  // 大戦争の分類名(tracks.json の bc の cat)の表示名と並び順
   var BC_CATS = {
     bgm: [
       ['regular', '恒常BGM'], ['limited', '限定BGM'], ['shometsu', '消滅都市コラボ'], ['pawapuro', 'パワプロコラボ'],
@@ -358,6 +363,7 @@
       .map(function (id) { return { id: id, loop: 1 }; });
   }
   var byNum = {};
+  var byPn = {};   // 元サイトの共有リンク(?p=)で使われていた曲番号 → 曲ID
   function pushVarint(bytes, n) {
     while (n >= 0x80) { bytes.push((n & 0x7f) | 0x80); n = Math.floor(n / 0x80); }
     bytes.push(n);
@@ -391,11 +397,14 @@
         loop = nums[++k];
         if (LOOP_STEPS.indexOf(loop) === -1) loop = 1;
       }
-      var id = byNum[Math.floor(v / 2)];
+      var id = byPn[Math.floor(v / 2)];
       if (id) entries.push({ id: id, loop: loop });
     }
     return entries;
   }
+  // 共有リンク: ?sd=12,5x2,100003,7x0
+  //   曲番号 = tracks.json の n(大戦争は bc の n、OGG は n+1000、にゃんこ村などは 100000 以降。34_0 のように文字入りも可)
+  //   xN   = ループ回数(省略すると1回、x0 は無限ループ)
   function shareUrl() {
     var ids = playlist.map(function (e) {
       return tracks[e.id].n + (e.loop !== 1 ? 'x' + e.loop : '');
@@ -513,7 +522,7 @@
     }
     var p = fetch(file)
       .then(function (r) {
-        if (!r.ok) throw new Error(r.status);
+        if (!r.ok) throw new Error('HTTP ' + r.status);
         return r.arrayBuffer();
       })
       .then(function (ab) {
@@ -822,12 +831,13 @@
       if (pendingPlay) startSource(0); else markPlaying();
       refreshMediaMeta();
       preloadNext();
-    }, function () {
+    }, function (err) {
       if (token !== loadToken) return;
       switching = false;
       pendingPlay = false;
       stopSource();
-      toast('読み込みに失敗しました');
+      console.warn('音声の読み込みに失敗:', t.file, err);
+      toast('読み込みに失敗しました' + (err && err.message ? '（' + err.message + '）' : ''));
       markPlaying();
     });
   }
@@ -1308,7 +1318,9 @@
       t.file = resolveFile(t.file);
       if (t.dl) t.dl = resolveFile(t.dl);
       // 共有URL用の番号。大戦争の番号(0〜)とぶつからないよう 100000 以降を使う
-      var want = 100000 + (typeof t.n === 'number' ? t.n : seq);
+      var orig = typeof t.n === 'number' ? t.n : seq;
+      byPn[orig] = t.id;   // 元サイトの ?p= リンクの番号
+      var want = 100000 + orig;
       while (byNum[want]) want++;
       t.n = want;
       byNum[want] = t.id;
@@ -1343,6 +1355,11 @@
     if (!data) throw res.__error || new Error(TRACKS_JSON + ' がありません');
     addBc(data.bc);
     addNyanko(data);
+    // 元サイトの ?p= リンクの、大戦争の曲の番号 (bc_start から bc_order の順に並んでいた)
+    var lp = data.legacy_p || {};
+    (lp.bc_order || []).forEach(function (n, i) {
+      if (byNum[String(n)]) byPn[(lp.bc_start || 0) + i] = byNum[String(n)];
+    });
     if (!bcList.some(function (t) { return t.fmt === 'mp3'; })) bcFmt = 'ogg';
 
     var firstRun = false;
