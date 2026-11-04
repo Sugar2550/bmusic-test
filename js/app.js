@@ -27,14 +27,10 @@
   var PL_KEY = 'bcMusicPlaylist';
   var VOL_KEY = 'bcMusicVolume';
   var SAVED_KEY = 'bcMusicSavedPlaylists';
-  // 曲のデータはすべてこの1ファイル(サイトのルートに置く)にまとめています
   var TRACKS_JSON = 'tracks.json';
-  // 音声ファイルの置き場所(vercel.json の /api/music/ → GitHub の music/ フォルダ)。
-  // tracks.json の mp3 / ogg / file / dl は、ここからの相対パスで書きます(例: mp3/000.mp3)。
-  // 「/」や「http」で始まるパスは、そのまま使います
   var MUSIC_BASE = '/api/music/';
   var BC_FMTS = ['mp3', 'ogg'];
-  // 大戦争の分類名(tracks.json の bc の cat)の表示名と並び順
+  var ARTWORK_URL = 'images/default.png';
   var BC_CATS = {
     bgm: [
       ['regular', '恒常BGM'], ['limited', '限定BGM'], ['shometsu', '消滅都市コラボ'], ['pawapuro', 'パワプロコラボ'],
@@ -262,7 +258,6 @@
       return (bcCat === 'all' || t.cat === bcCat) && (!q || t.title.toLowerCase().indexOf(q) !== -1);
     });
   }
-  // 分類(cat)がある曲があれば、絞り込みメニューを自動で出す
   function renderBcCats() {
     var sel = $('bc-cat'), items = bcOfView(), counts = {}, found = [];
     items.forEach(function (t) {
@@ -363,7 +358,7 @@
       .map(function (id) { return { id: id, loop: 1 }; });
   }
   var byNum = {};
-  var byPn = {};   // 元サイトの共有リンク(?p=)で使われていた曲番号 → 曲ID
+  var byPn = {}; 
   function pushVarint(bytes, n) {
     while (n >= 0x80) { bytes.push((n & 0x7f) | 0x80); n = Math.floor(n / 0x80); }
     bytes.push(n);
@@ -468,12 +463,17 @@
 
   function ensureCtx() {
     clearTimeout(sleepTimer);
-    if (actx && actx.state !== 'running' && (ctxStale || actx.state === 'interrupted' || actx.state === 'closed')) {
+    if (actx && (actx.state === 'closed' || (!playing && actx.state !== 'running' && (ctxStale || actx.state === 'interrupted')))) {
       var old = actx;
       old.onstatechange = null;
       if (playing) { pausedAbs = absNow(); playing = false; }
       stopSource();
-      try { old.close(); } catch (e) {}
+      try {
+        if (old.state !== 'closed') {
+          var cp = old.close();
+          if (cp && cp.catch) cp.catch(function () {});
+        }
+      } catch (e) {}
       actx = null;
     }
     ctxStale = false;
@@ -485,12 +485,7 @@
       gainNode.connect(actx.destination);
       var ctx = actx;
       ctx.onstatechange = function () {
-        if (ctx === actx && ctx.state !== 'running' && playing) {
-          pausedAbs = absNow();
-          stopSource();
-          playing = false;
-          markPlaying();
-        }
+        if (ctx === actx && ctx.state !== 'running' && playing) recoverAudio(0);
       };
     }
     try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
@@ -510,8 +505,43 @@
   }
 
   function resumeCtx() {
-    var p = actx.resume();
-    if (p && p.catch) p.catch(function () {});
+    try {
+      var p = actx.resume();
+      if (p && p.then) {
+        return p.then(function () { return !!actx && actx.state === 'running'; }, function () { return false; });
+      }
+    } catch (e) {}
+    return Promise.resolve(false);
+  }
+
+  var recoverTimer = null;
+  function giveUpPlayback() {
+    if (!playing) return;
+    pausedAbs = absNow();
+    stopSource();
+    playing = false;
+    markPlaying();
+  }
+  function recoverAudio(tries) {
+    clearTimeout(recoverTimer);
+    if (!playing || !actx || actx.state === 'running') return;
+    var ctx = actx;
+    if (ctx.state === 'closed') { giveUpPlayback(); return; }
+    resumeCtx();
+    recoverTimer = setTimeout(function () {
+      if (ctx !== actx || !playing || ctx.state === 'running') return;
+      if (document.hidden && tries < 40) recoverAudio(tries + 1);
+      else if (!document.hidden) giveUpPlayback();
+    }, 1500);
+  }
+  function onForeground() {
+    if (document.hidden) return;
+    if (keeper && keeperWant && keeper.paused) {
+      var kp = keeper.play();
+      if (kp && kp.catch) kp.catch(function () {});
+    }
+    if (playing) recoverAudio(0);
+    updateMediaState();
   }
 
   function getBuffer(file) {
@@ -676,17 +706,18 @@
   var silenceSrc = null;
   function silenceUrl() {
     if (silenceSrc) return silenceSrc;
-    var rate = 8000, n = rate, buf = new Uint8Array(44 + n), dv = new DataView(buf.buffer);
-    function w(o, s) { for (var i = 0; i < s.length; i++) buf[o + i] = s.charCodeAt(i); }
-    w(0, 'RIFF'); dv.setUint32(4, 36 + n, true); w(8, 'WAVE'); w(12, 'fmt ');
+    var rate = 8000, secs = 30, n = rate * secs, bytes = n * 2;
+    var buf = new Uint8Array(44 + bytes), dv = new DataView(buf.buffer);
+    function w(o, str) { for (var i = 0; i < str.length; i++) buf[o + i] = str.charCodeAt(i); }
+    w(0, 'RIFF'); dv.setUint32(4, 36 + bytes, true); w(8, 'WAVE'); w(12, 'fmt ');
     dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
-    dv.setUint32(24, rate, true); dv.setUint32(28, rate, true); dv.setUint16(32, 1, true);
-    dv.setUint16(34, 8, true); w(36, 'data'); dv.setUint32(40, n, true);
-    buf.fill(128, 44);
+    dv.setUint32(24, rate, true); dv.setUint32(28, rate * 2, true); dv.setUint16(32, 2, true);
+    dv.setUint16(34, 16, true); w(36, 'data'); dv.setUint32(40, bytes, true);
+    for (var i = 0; i < n; i++) dv.setInt16(44 + i * 2, Math.round(Math.sin(2 * Math.PI * 20 * i / rate) * 33), true);
     silenceSrc = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
     return silenceSrc;
   }
-  var keeper = null, keeperWant = false;
+  var keeper = null, keeperWant = false, keeperRetry = null;
   function keepAlive(on) {
     if (!MS) return;
     keeperWant = on;
@@ -696,11 +727,21 @@
         keeper.loop = true;
         keeper.addEventListener('pause', function () {
           if (!keeperWant || !playing) return;
-          pausedAbs = absNow();
-          stopSource();
-          playing = false;
-          markPlaying();
-          sleepCtx();
+          if (!document.hidden) {
+            pausedAbs = absNow();
+            stopSource();
+            playing = false;
+            markPlaying();
+            sleepCtx();
+            return;
+          }
+          clearTimeout(keeperRetry);
+          keeperRetry = setTimeout(function () {
+            if (keeperWant && playing && keeper.paused) {
+              var p = keeper.play();
+              if (p && p.catch) p.catch(function () {});
+            }
+          }, 300);
         });
       }
       if (keeper.paused) {
@@ -727,7 +768,7 @@
         title: label(t),
         artist: app,
         album: queueName,
-        artwork: [{ src: new URL('images/default.png', location.href).href, sizes: '512x512', type: 'image/png' }]
+        artwork: [{ src: new URL(ARTWORK_URL, location.href).href, type: 'image/png' }]
       });
     } catch (e) {}
   }
@@ -1185,7 +1226,10 @@
 
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) ctxStale = true;
+    else onForeground();
   });
+  window.addEventListener('pageshow', onForeground);
+  window.addEventListener('focus', onForeground);
 
   document.addEventListener('keydown', function (e) {
     if (e.code !== 'Space' || /^(INPUT|TEXTAREA|BUTTON|A)$/.test(e.target.tagName)) return;
@@ -1194,8 +1238,7 @@
     togglePlay();
   });
 
-  // ===== 名前を付けて保存するプレイリスト =====
-  var fileMap = {};     // 曲ファイルのパス -> 曲ID (旧サイトの保存データの引き継ぎ用)
+  var fileMap = {};
 
   function entriesFromLegacy(tracksArr) {
     return (tracksArr || []).map(function (x) {
@@ -1270,7 +1313,6 @@
     toast('「' + name + '」として保存しました');
   });
 
-  // ===== データ読み込み =====
   function loadJson(url) {
     return fetch(url).then(function (r) {
       if (!r.ok) throw new Error(url + ' : HTTP ' + r.status);
@@ -1279,19 +1321,15 @@
   }
   function dataOf(res) { return res && !res.__error ? res : null; }
 
-  // 曲ファイルのパス: 「/」「http」で始まるものはそのまま、それ以外は MUSIC_BASE からの相対パス
   function resolveFile(p) {
     return /^(\/|https?:)/.test(p) ? p : MUSIC_BASE + p;
   }
-  // OGG の曲番号は、MP3 の番号に 1000 を足したもの (例: 5 → 1005、34_0 → 1034_0)
+
   function oggNum(n) {
     if (typeof n === 'number') return n + 1000;
     return String(n).replace(/^\d+/, function (d) { return String(1000 + Number(d)); });
   }
 
-  // にゃんこ大戦争: tracks.json の bc。1曲に mp3 / ogg のファイルを書くと、それぞれ別の曲として並びます
-  //   { "n": 0, "title": "…", "ver": "1.0", "kind": "bgm", "cat": "regular", "dur": 127.4,
-  //     "mp3": "mp3/000.mp3", "ogg": "ogg/000.ogg" }
   function addBc(list) {
     (list || []).forEach(function (s) {
       BC_FMTS.forEach(function (fmt) {
@@ -1310,7 +1348,6 @@
     });
   }
 
-  // にゃんこ村など: tracks.json の bgm / se / other
   function addNyanko(data) {
     var seq = 0;
     function prep(t, type) {
@@ -1319,7 +1356,7 @@
       if (t.dl) t.dl = resolveFile(t.dl);
       // 共有URL用の番号。大戦争の番号(0〜)とぶつからないよう 100000 以降を使う
       var orig = typeof t.n === 'number' ? t.n : seq;
-      byPn[orig] = t.id;   // 元サイトの ?p= リンクの番号
+      byPn[orig] = t.id; 
       var want = 100000 + orig;
       while (byNum[want]) want++;
       t.n = want;
@@ -1355,7 +1392,6 @@
     if (!data) throw res.__error || new Error(TRACKS_JSON + ' がありません');
     addBc(data.bc);
     addNyanko(data);
-    // 元サイトの ?p= リンクの、大戦争の曲の番号 (bc_start から bc_order の順に並んでいた)
     var lp = data.legacy_p || {};
     (lp.bc_order || []).forEach(function (n, i) {
       if (byNum[String(n)]) byPn[(lp.bc_start || 0) + i] = byNum[String(n)];
@@ -1365,7 +1401,7 @@
     var firstRun = false;
     try { firstRun = localStorage.getItem(PL_KEY) === null; } catch (e) {}
     playlist = loadPlaylist();
-    if (firstRun) {   // 旧サイトのプレイリストを引き継ぐ
+    if (firstRun) {
       try {
         var old = JSON.parse(localStorage.getItem('playlist') || 'null');
         if (Array.isArray(old)) { playlist = entriesFromLegacy(old); savePlaylist(); }
